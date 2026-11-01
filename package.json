@@ -31,7 +31,6 @@
     "@vercel/node": "^13.0.1",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
-    "vercel": "^59.23.2",
     "vite": "^6.2.0"
   },
   "overrides": {
@@ -43,7 +42,7 @@
       "minimatch": "^10.2.3"
     },
     "@vercel/node": {
-      "undici": "^5.29.0"
+      "undici": "^6.29.1"
     }
   }
 }
