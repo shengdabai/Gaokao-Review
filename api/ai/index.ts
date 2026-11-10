@@ -13,7 +13,7 @@ import { getDatabase, generateId } from '../lib/db';
 import { sendSuccess, sendError, sendPredefinedError } from '../lib/response';
 import { handleCors } from '../lib/cors';
 import { GETNOTES_TOPIC_IDS, SUBJECT_NAMES, VALID_SUBJECTS } from '../lib/constants';
-import { MAX_IMAGE_BYTES, isNonEmptyString, isOptionalString, isSubjectId, parseDataImage } from '../lib/validate';
+import { isRequestBody, MAX_IMAGE_BYTES, isNonEmptyString, isOptionalString, isSubjectId, parseDataImage } from '../lib/validate';
 
 const TUTOR_MODES: readonly string[] = ['learn', 'review', 'quiz'];
 
@@ -210,6 +210,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const auth = authenticateRequest(req);
     if (!auth) return sendPredefinedError(res, 'UNAUTHORIZED');
+
+    if (req.method === 'POST' && !isRequestBody(req.body)) {
+      return sendPredefinedError(res, 'INVALID_REQUEST');
+    }
 
     const action = req.query.action as string;
 

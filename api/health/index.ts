@@ -3,7 +3,7 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Pool } from 'pg';
+import { pingDatabase } from '../lib/db';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     const envVars = {
@@ -18,24 +18,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 尝试连接数据库
     let dbStatus = 'not_tested';
-    let dbError = '';
 
-    const connectionString = process.env.POSTGRES_URL || process.env.POSTGRES_URL_NO_SSL || process.env.DATABASE_URL;
+    const connectionString = process.env.POSTGRES_URL || process.env.POSTGRES_URL_NO_SSL
+        || process.env.POSTGRES_URL_NON_POOLING || process.env.DATABASE_URL;
 
     if (connectionString) {
         try {
-            const pool = new Pool({
-                connectionString,
-                ssl: { rejectUnauthorized: false },
-                connectionTimeoutMillis: 5000,
-            });
-
-            const result = await pool.query('SELECT NOW() as time');
+            await pingDatabase();
             dbStatus = 'connected';
-            await pool.end();
-        } catch (error: any) {
+        } catch {
             dbStatus = 'error';
-            dbError = error.message;
         }
     } else {
         dbStatus = 'no_connection_string';

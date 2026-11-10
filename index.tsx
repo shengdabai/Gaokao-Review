@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { Camera, Upload, Search, BookOpen, Brain, Zap, ChevronRight, GraduationCap, History, Trash2, Bookmark, X, Key, Lock, LogOut, User, MessageCircle, TrendingUp, BarChart3, Filter } from "lucide-react";
-import { useAuth } from "./hooks/useAuth";
+import { useAuth, type UseAuthReturn } from "./hooks/useAuth";
+import { userCache } from "./services/userCache";
 import { AuthPage } from "./components/AuthPage";
 import { TutorChat } from "./components/TutorChat";
 import { PredictAnalysis } from "./components/PredictAnalysis";
@@ -19,8 +20,13 @@ interface ErrorItem {
 }
 
 const App = () => {
-  // 认证状态
   const auth = useAuth();
+  // Recreate all private state when accounts change, including pending UI requests.
+  return React.createElement(AppContent, { key: auth.user?.userId ?? 'signed-out', auth });
+};
+
+const AppContent = ({ auth }: { auth: UseAuthReturn }) => {
+  const cache = userCache(localStorage, auth.user?.userId ?? 'signed-out');
 
   // API Key State (保留兼容性)
   const [hasApiKey, setHasApiKey] = useState(true); // 默认使用后端 API
@@ -60,7 +66,7 @@ const App = () => {
       } catch (e) {
         console.error("Failed to load search history", e);
         // 降级到本地存储
-        const savedHistory = localStorage.getItem("app_search_history");
+        const savedHistory = cache.getItem("app_search_history");
         if (savedHistory) {
           try {
             setSearchHistory(JSON.parse(savedHistory));
@@ -84,7 +90,7 @@ const App = () => {
       } catch (e) {
         console.error("Failed to load mistakes", e);
         // 降级到本地存储
-        const savedNotebook = localStorage.getItem("app_error_notebook");
+        const savedNotebook = cache.getItem("app_error_notebook");
         if (savedNotebook) {
           try {
             setErrorNotebook(JSON.parse(savedNotebook));
@@ -134,14 +140,14 @@ const App = () => {
   const updateHistory = (term: string) => {
     setSearchHistory(prev => {
       const newHistory = [term, ...prev.filter(h => h !== term)].slice(0, 6);
-      localStorage.setItem("app_search_history", JSON.stringify(newHistory));
+      cache.setItem("app_search_history", JSON.stringify(newHistory));
       return newHistory;
     });
   };
 
   const clearHistory = () => {
     setSearchHistory([]);
-    localStorage.removeItem("app_search_history");
+    cache.removeItem("app_search_history");
   };
 
   // --- Error Notebook Logic ---
@@ -169,7 +175,7 @@ const App = () => {
       const newNotebook = [newItem, ...errorNotebook];
       setErrorNotebook(newNotebook);
       // 同时保存到本地作为备份
-      localStorage.setItem("app_error_notebook", JSON.stringify(newNotebook));
+      cache.setItem("app_error_notebook", JSON.stringify(newNotebook));
 
       alert("已成功加入错题本！");
     } catch (error: any) {
@@ -192,7 +198,7 @@ const App = () => {
 
       const newNotebook = errorNotebook.filter(item => item.id !== id);
       setErrorNotebook(newNotebook);
-      localStorage.setItem("app_error_notebook", JSON.stringify(newNotebook));
+      cache.setItem("app_error_notebook", JSON.stringify(newNotebook));
     } catch (error: any) {
       console.error("Delete mistake failed", error);
       if (error.code === 'UNAUTHORIZED') {

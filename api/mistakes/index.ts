@@ -13,7 +13,7 @@ import { authenticateRequest } from '../lib/auth';
 import { sendSuccess, sendError, sendPredefinedError } from '../lib/response';
 import { handleCors } from '../lib/cors';
 import { VALID_SUBJECTS, safeJsonParse } from '../lib/constants';
-import { MAX_IMAGE_BYTES, MAX_IMAGE_URL_LENGTH, isHttpsUrl, isNonEmptyString, isSubjectId, normalizeTags, parseDataImage } from '../lib/validate';
+import { isRequestBody, MAX_IMAGE_BYTES, MAX_IMAGE_URL_LENGTH, isHttpsUrl, isNonEmptyString, isSubjectId, normalizeTags, parseDataImage } from '../lib/validate';
 
 // 获取错题列表
 async function handleGetList(req: VercelRequest, res: VercelResponse, userId: string) {
@@ -145,6 +145,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const auth = authenticateRequest(req);
     if (!auth) return sendPredefinedError(res, 'UNAUTHORIZED');
+
+    if (req.method === 'POST' && !isRequestBody(req.body)) {
+      return sendPredefinedError(res, 'INVALID_REQUEST');
+    }
 
     const { id, action } = req.query;
 

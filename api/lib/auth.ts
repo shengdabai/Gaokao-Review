@@ -54,7 +54,7 @@ export function verifyToken(token: string): JWTPayload | null {
  */
 export function extractToken(req: VercelRequest): string | null {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
     return null;
   }
   return authHeader.slice(7);
@@ -97,9 +97,9 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
  * @param username - 用户名
  * @returns 是否有效
  */
-export function isValidUsername(username: string): boolean {
+export function isValidUsername(username: unknown): username is string {
   // 用户名: 3-20 字符，只允许字母、数字、下划线
-  return /^[a-zA-Z0-9_]{3,20}$/.test(username);
+  return typeof username === 'string' && /^[a-zA-Z0-9_]{3,20}$/.test(username);
 }
 
 /**
@@ -107,9 +107,10 @@ export function isValidUsername(username: string): boolean {
  * @param password - 密码
  * @returns 是否有效
  */
-export function isValidPassword(password: string): boolean {
-  // 密码: 至少 6 个字符
-  return password.length >= 6;
+export function isValidPassword(password: unknown): password is string {
+  // bcrypt 只处理前 72 字节；拒绝超长输入，避免不同密码产生相同凭据。
+  return typeof password === 'string' && password.length >= 6
+    && Buffer.byteLength(password, 'utf8') <= 72;
 }
 
 

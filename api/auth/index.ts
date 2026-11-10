@@ -30,9 +30,10 @@ interface RegisterBody {
 
 // 登录处理
 async function handleLogin(req: VercelRequest, res: VercelResponse) {
-    const { username, password } = req.body as LoginBody;
+    const { username, password } = req.body ?? {};
 
-    if (!username || !password) {
+    // Login only checks types: accounts created before the 72-byte rule must still sign in.
+    if (typeof username !== 'string' || !username || typeof password !== 'string' || !password) {
         return sendError(res, 'INVALID_REQUEST', '用户名和密码不能为空', 400);
     }
 
@@ -54,7 +55,7 @@ async function handleLogin(req: VercelRequest, res: VercelResponse) {
 
 // 注册处理
 async function handleRegister(req: VercelRequest, res: VercelResponse) {
-    const { username, password } = req.body as RegisterBody;
+    const { username, password } = req.body ?? {};
 
     if (!username || !password) {
         return sendError(res, 'INVALID_REQUEST', '用户名和密码不能为空', 400);
@@ -65,7 +66,7 @@ async function handleRegister(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!isValidPassword(password)) {
-        return sendError(res, 'INVALID_REQUEST', '密码至少需要 6 个字符', 400);
+        return sendError(res, 'INVALID_REQUEST', '密码至少需要 6 个字符，最多 72 字节', 400);
     }
 
     const db = getDatabase();

@@ -12,7 +12,7 @@ import { getDatabase, generateId } from '../lib/db';
 import { sendSuccess, sendError, sendPredefinedError } from '../lib/response';
 import { handleCors } from '../lib/cors';
 import { GETNOTES_TOPIC_IDS, SUBJECT_NAMES, VALID_SUBJECTS } from '../lib/constants';
-import { isSubjectId } from '../lib/validate';
+import { isRequestBody, isSubjectId } from '../lib/validate';
 
 // API 配置
 const GETNOTES_URL = process.env.GETNOTES_WEBHOOK_URL || '';
@@ -189,6 +189,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const auth = authenticateRequest(req);
         if (!auth) {
             return sendPredefinedError(res, 'UNAUTHORIZED');
+        }
+
+        if (req.method === 'POST' && !isRequestBody(req.body)) {
+            return sendPredefinedError(res, 'INVALID_REQUEST');
         }
 
         const action = req.query.action as string;
