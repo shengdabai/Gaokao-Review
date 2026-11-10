@@ -42,7 +42,11 @@
       "minimatch": "^10.2.3"
     },
     "@vercel/node": {
-      "undici": "^6.29.1"
+      "undici": "^6.29.1",
+      "path-to-regexp": "6.3.0"
+    },
+    "@vercel/static-config": {
+      "ajv": "8.18.0"
     }
   }
 }
