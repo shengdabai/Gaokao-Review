@@ -3,6 +3,11 @@
  * 纯函数，不依赖其他模块（便于用 node --test 直接运行）
  */
 
+/** JSON 请求体必须是对象，不接受空值、数组或原始值。 */
+export function isRequestBody(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
 /**
  * 判断 key 是否为对象自身的属性。
  * 用于代替 `!!obj[key]`，避免 constructor、__proto__、toString 等原型键绕过检查。

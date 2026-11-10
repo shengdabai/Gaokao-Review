@@ -24,13 +24,20 @@ for (const file of fs.globSync('api/**/*.ts', { cwd: tmp })) {
   const source = fs.readFileSync(p, 'utf8');
   fs.writeFileSync(p, source.replace(/from '(\.\.?\/[^']+?)'/g, (m, spec) => (spec.endsWith('.ts') ? m : `from '${spec}.ts'`)));
 }
-fs.writeFileSync(path.join(tmp, 'api/lib/auth.ts'), `export function authenticateRequest() { return { userId: 'u1' }; }`);
+fs.copyFileSync(path.join(tmp, 'api/lib/auth.ts'), path.join(tmp, 'api/lib/auth-real.ts'));
+fs.writeFileSync(path.join(tmp, 'api/lib/auth.ts'), `
+export function authenticateRequest() { return { userId: 'u1' }; }
+export { isValidUsername, isValidPassword, hashPassword, verifyPassword, generateToken } from './auth-real.ts';
+`);
 fs.writeFileSync(path.join(tmp, 'api/lib/db.ts'), `
 const state = (globalThis.__gaokaoDb ??= { calls: [], progressRows: [] });
+export async function pingDatabase() { state.calls.push('pingDatabase'); if (state.pingFails) throw new Error('private connection detail'); }
 export function generateId() { return 'id' + state.calls.length; }
 export function getDatabase() {
   const record = (name) => async (...args) => { state.calls.push(name); };
   return {
+    getUserByUsername: async () => { state.calls.push('getUserByUsername'); return undefined; },
+    createUser: record('createUser'),
     getStudyProgress: async () => state.progressRows,
     createMistake: record('createMistake'),
     createSearchHistory: record('createSearchHistory'),
@@ -49,11 +56,16 @@ exports.GoogleGenerativeAI = class {
     return { async generateContent() { globalThis.__gaokaoGemini = (globalThis.__gaokaoGemini || 0) + 1; return { response: { text: () => '【标签】函数\\n回答' } }; } };
   }
 };`);
+for (const name of ['jsonwebtoken', 'bcryptjs']) {
+  fs.symlinkSync(path.join(root, 'node_modules', name), path.join(tmp, 'node_modules', name), 'dir');
+}
+process.env.JWT_SECRET = 'test-only-signing-key';
 process.env.GEMINI_API_KEY = 'test-placeholder';
 
 const db = (globalThis.__gaokaoDb ??= { calls: [], progressRows: [] });
 const load = (name) => import(path.join(tmp, `api/${name}/index.ts`));
-const [progress, mistakes, ai, notes] = await Promise.all(['progress', 'mistakes', 'ai', 'notes'].map(load));
+const [progress, mistakes, ai, notes, auth, health] = await Promise.all(['progress', 'mistakes', 'ai', 'notes', 'auth', 'health'].map(load));
+const realAuth = await import(path.join(tmp, 'api/lib/auth-real.ts'));
 
 async function call(mod, method, body, query = {}) {
   const out = { status: 0, body: null };
@@ -153,5 +165,73 @@ test('notes search 的 subject 必须是有效学科，query 必须是字符串'
     const r = await call(notes, 'POST', { query: '函数', subject }, { action: 'search' });
     assert.equal(r.status, 200, String(subject));
     assert.deepEqual(r.writes, ['createSearchHistory']);
+  }
+});
+
+
+test('POST handlers reject missing, primitive and array bodies before side effects', async () => {
+  for (const [mod, query] of [[progress, {}], [mistakes, {}], [ai, { action: 'ask' }], [notes, { action: 'search' }]]) {
+    for (const body of [undefined, null, [], 'text', 42, true]) {
+      const r = await call(mod, 'POST', body, query);
+      assert.equal(r.status, 400);
+      assert.deepEqual(r.writes, []);
+      assert.equal(r.gemini, 0);
+    }
+  }
+});
+
+test('auth rejects invalid types and bcrypt-truncated passwords before database access', async () => {
+  for (const action of ['login', 'register']) {
+    for (const body of [undefined, null, {}, { username: ['abc'], password: 'secret' },
+      { username: 'student', password: ['secret'] }, { username: 123, password: 'secret' },
+      { username: 'student', password: { length: 10 } }]) {
+      const r = await call(auth, 'POST', body, { action });
+      assert.equal(r.status, 400);
+      assert.deepEqual(r.writes, []);
+    }
+  }
+  for (const password of ['a'.repeat(73), '密'.repeat(25)]) {
+    const register = await call(auth, 'POST', { username: 'student', password }, { action: 'register' });
+    assert.equal(register.status, 400);
+    assert.deepEqual(register.writes, []);
+    // Accounts created before the 72-byte rule must still be able to sign in.
+    const login = await call(auth, 'POST', { username: 'student', password }, { action: 'login' });
+    assert.equal(login.status, 401);
+    assert.deepEqual(login.writes, ['getUserByUsername']);
+  }
+  for (const password of ['a'.repeat(72), '密'.repeat(24)]) {
+    const login = await call(auth, 'POST', { username: 'student', password }, { action: 'login' });
+    assert.equal(login.status, 401); // validation passed, user is absent
+    assert.deepEqual(login.writes, ['getUserByUsername']);
+    const register = await call(auth, 'POST', { username: 'student', password }, { action: 'register' });
+    assert.equal(register.status, 201);
+    assert.deepEqual(register.writes, ['getUserByUsername', 'createUser']);
+  }
+});
+
+test('malformed authorization headers return no token instead of throwing', () => {
+  for (const authorization of [undefined, null, 42, ['Bearer token'], 'Basic token']) {
+    assert.equal(realAuth.extractToken({ headers: { authorization } }), null);
+  }
+  assert.equal(realAuth.extractToken({ headers: { authorization: 'Bearer token' } }), 'token');
+});
+
+test('health uses the shared database probe and hides connection errors', async () => {
+  const original = process.env.POSTGRES_URL;
+  try {
+    process.env.POSTGRES_URL = 'postgres://test.invalid/unused';
+    db.pingFails = false;
+    const ok = await call(health, 'GET');
+    assert.equal(ok.body.services.database, 'ok');
+    assert.deepEqual(ok.writes, ['pingDatabase']);
+    db.pingFails = true;
+    const failed = await call(health, 'GET');
+    assert.equal(failed.body.services.database, 'error');
+    assert.deepEqual(failed.writes, ['pingDatabase']);
+    assert.equal(JSON.stringify(failed.body).includes('private connection detail'), false);
+  } finally {
+    db.pingFails = false;
+    if (original === undefined) delete process.env.POSTGRES_URL;
+    else process.env.POSTGRES_URL = original;
   }
 });

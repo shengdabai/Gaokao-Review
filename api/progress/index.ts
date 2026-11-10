@@ -9,7 +9,7 @@ import { getDatabase, generateId } from '../lib/db';
 import { authenticateRequest } from '../lib/auth';
 import { sendSuccess, sendError, sendPredefinedError } from '../lib/response';
 import { handleCors } from '../lib/cors';
-import { isOwnKey, isNonEmptyString, isOptionalString, clampInt } from '../lib/validate';
+import { isRequestBody, isOwnKey, isNonEmptyString, isOptionalString, clampInt } from '../lib/validate';
 
 /**
  * 高考知识点体系 - 各学科核心考点
@@ -68,6 +68,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const auth = authenticateRequest(req);
     if (!auth) {
         return sendPredefinedError(res, 'UNAUTHORIZED');
+    }
+
+    if (req.method === 'POST' && !isRequestBody(req.body)) {
+        return sendPredefinedError(res, 'INVALID_REQUEST');
     }
 
     const db = getDatabase();

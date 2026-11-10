@@ -417,6 +417,12 @@ export function getDatabase(): Database {
   return db;
 }
 
+/** 健康检查复用同一连接池与 TLS 配置，不创建额外连接池或初始化表。 */
+export async function pingDatabase(): Promise<void> {
+  const probe = { text: 'SELECT 1', query_timeout: 5000 };
+  await getPool().query(probe);
+}
+
 /**
  * 生成 UUID
  */
